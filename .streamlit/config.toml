@@ -1,0 +1,16 @@
+[server]
+# This MVP has no authentication, so it must only be reachable from this computer.
+address = "localhost"
+# Upload cap in MB, aligned with LA_MAX_PHOTO_BYTES (the backend enforces its own limit too).
+maxUploadSize = 10
+
+[browser]
+# Privacy-preserving default: do not send usage statistics.
+gatherUsageStats = false
+
+[client]
+# Hide Streamlit's own "Deploy" button and developer menu: this is a local tool.
+toolbarMode = "minimal"
+
+# No [theme] section on purpose: any theme option switches Streamlit to a custom
+# light theme and ignores the operating system's dark mode.

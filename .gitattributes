@@ -1,0 +1,6 @@
+# Normalise line endings so diffs look the same on Windows and Linux
+* text=auto eol=lf
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary

@@ -1,0 +1,31 @@
+# Secrets — never commit real keys
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Runtime data: SQLite database and uploaded photos
+data/*
+!data/.gitkeep
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

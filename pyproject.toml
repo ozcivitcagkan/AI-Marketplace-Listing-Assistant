@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "listing-assistant"
+version = "0.1.0"
+description = "Multi-agent assistant that drafts second-hand car listings from verified facts only."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.9",  # validated data models for every agent handoff
+    "pillow>=11",  # decode, strip metadata, re-encode images
+    "numpy>=2",  # blur/brightness maths without pulling in OpenCV
+    "anthropic>=1.8",  # Claude API (vision + structured outputs + refusal fallbacks)
+]
+
+[project.optional-dependencies]
+ui = [
+    "streamlit>=1.40",  # local web interface (thin view over the workflow)
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+listing_assistant = ["schemas/*.json", "db/migrations/*.sql", "prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F: errors, I: import order, B: common bugs, UP: modern syntax, S: security checks
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# `assert` is the normal way to write pytest tests.
+"tests/**" = ["S101"]
