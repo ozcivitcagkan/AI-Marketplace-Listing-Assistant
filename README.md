@@ -57,6 +57,28 @@ is in Turkish.
 
 Agent details and the permission matrix are in [docs/architecture.md](docs/architecture.md).
 
+## Screenshots
+
+A demo run with the real model. The vehicle details are made up, and the photos are CC0 images
+from Wikimedia Commons (uploaded by TTTNIS) with bystanders blurred.
+
+**Fact review (gate 1).** The Vision Analyst proposes facts from the photos with a confidence
+score. Nothing enters the listing until the seller approves it. Here the model also put the
+interior color into the color field, and the seller rejects it.
+
+![Fact review with photo-based proposals](docs/images/fact-review.jpg)
+
+**Draft and final approval (gate 2).** The title, the spec list and the equipment list are
+rendered by code from approved facts. The Copywriter writes the sentences in the owner's voice.
+Highlighted sentences carry a warning from the Safety Reviewer.
+
+![Draft listing waiting for approval](docs/images/draft.jpg)
+
+**Every sentence has a source.** Each sentence in the draft is linked to the approved facts it
+is based on.
+
+![Sentence-to-fact links](docs/images/claim-sources.jpg)
+
 ## Security
 
 - Seller notes, text in photos and change requests go into escaped tags and are treated as
