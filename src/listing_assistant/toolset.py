@@ -36,7 +36,7 @@ from listing_assistant.photo_intake import photo_path
 from listing_assistant.pii import PiiMatch, scan_text
 from listing_assistant.policy import style_rules_text
 from listing_assistant.prompting import load_prompt
-from listing_assistant.text_utils import comparison_key
+from listing_assistant.text_utils import place_key
 from listing_assistant.tools import AgentRun, PermissionDeniedError
 
 VISION_PROMPT = "vision_analyst_v1"
@@ -133,8 +133,8 @@ class ListingTools:
         city: str | None,
     ) -> list[int]:
         rows = ComparableRepository(self._conn).search(make, model, year_min, year_max)
-        wanted = comparison_key(city) if city else None
-        return [price for row_city, price in rows if wanted in (None, comparison_key(row_city))]
+        wanted = place_key(city) if city else None
+        return [price for row_city, price in rows if wanted in (None, place_key(row_city))]
 
     def compute_price_stats(self, run: AgentRun, prices: list[int]) -> PriceStats | None:
         return price_stats(prices)

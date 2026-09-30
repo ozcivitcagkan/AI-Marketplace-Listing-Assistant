@@ -26,3 +26,12 @@ def group_thousands(number: int) -> str:
 def comparison_key(value: str) -> str:
     """Normalise a value for equality checks: 'Kırmızı ' and 'kırmızı' are the same value."""
     return re.sub(r"\s+", " ", tr_lower(value)).strip()
+
+
+def place_key(value: str) -> str:
+    """Like comparison_key, but 'Istanbul', 'İstanbul' and 'istanbul' are the same place.
+
+    Sellers often type Turkish place names without the dotted capital, so dotted and
+    dotless i are folded together. Kept separate so answers like "hayır" are unaffected.
+    """
+    return comparison_key(value).replace("ı", "i")

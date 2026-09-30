@@ -323,7 +323,7 @@ class ListingWorkflow:
         pending = self._facts.list_for_listing(listing_id, FactStatus.PROPOSED)
         if pending:
             raise WorkflowError(
-                f"{len(pending)} öneri hâlâ karar bekliyor: her birini onaylayın ya da reddedin."
+                f"{len(pending)} öneri daha karar bekliyor: her birini onaylayın ya da reddedin."
             )
         self._on_facts_gate_passed(listing_id)
         with self._agent(AgentName.GAP_DETECTOR, listing_id) as run:
@@ -400,9 +400,16 @@ class ListingWorkflow:
     # --- step 5: generation with bounded correction rounds ------------------------------
 
     def run_generation(
-        self, listing_id: str, change_request: str | None = None
+        self,
+        listing_id: str,
+        change_request: str | None = None,
+        previous_draft: Draft | None = None,
     ) -> GenerationResult:
         listing = self._require(listing_id, S.GENERATING, S.SAFETY_CHECK)
+        if not self._facts.list_for_listing(listing_id, FactStatus.APPROVED):
+            raise WorkflowError(
+                "İlan metni yazılamaz: onaylanmış hiçbir bilgi yok. En az bir bilgi gerekiyor."
+            )
         budget = self._budget(listing_id)
         # Resume: a crash between writing and reviewing leaves the draft to be reviewed.
         pending = self._drafts.latest(listing_id) if listing.status is S.SAFETY_CHECK else None
@@ -411,7 +418,9 @@ class ListingWorkflow:
         while True:
             if pending is None:
                 with self._agent(AgentName.COPYWRITER, listing_id, budget) as run:
-                    attempt = run_copywriter(run, self._schema, feedback, change_request)
+                    attempt = run_copywriter(
+                        run, self._schema, feedback, change_request, previous_draft
+                    )
                 if attempt.draft is None:
                     rounds += 1
                     if rounds > MAX_CORRECTION_ROUNDS:
@@ -442,7 +451,8 @@ class ListingWorkflow:
                     (f"Claim {i.claim_index}: " if i.claim_index is not None else "") + i.message
                     for i in blocking
                 ]
-                pending = None
+                # The Copywriter sees what it wrote, so "Claim 3" points at a real sentence.
+                previous_draft, pending = pending, None
                 transition(self._conn, listing_id, S.GENERATING)
                 continue
 
@@ -481,7 +491,7 @@ class ListingWorkflow:
         if flagged and not acknowledge_privacy_flags:
             raise WorkflowError(
                 f"{len(flagged)} fotoğrafta kişisel bir ayrıntı (plaka, yüz, belge)"
-                " görünüyor olabilir."
+                " görünüyor olabilir ya da fotoğraf incelenemedi."
                 " Bulanıklaştırın ya da onaylamadan önce bunu kabul ettiğinizi işaretleyin."
             )
         approval = ApprovalRepository(self._conn).add(
@@ -530,7 +540,7 @@ class ListingWorkflow:
         transition(
             self._conn, listing_id, S.GENERATING, actor_type=ActorType.USER, actor_name=LOCAL_ACTOR
         )
-        return self.run_generation(listing_id, change_request=comment)
+        return self.run_generation(listing_id, change_request=comment, previous_draft=draft)
 
     def export_listing(self, listing_id: str) -> ExportPackage:
         listing = self._require(listing_id, S.APPROVED, S.EXPORTED)

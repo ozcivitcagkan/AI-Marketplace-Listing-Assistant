@@ -78,7 +78,9 @@ PRIVACY_LABELS = {
     PrivacyFlag.DOOR_NUMBER: "Kapı numarası görünüyor",
     PrivacyFlag.DOCUMENT: "Belge görünüyor",
     PrivacyFlag.SCREEN_PERSONAL_INFO: "Ekranda kişisel bilgi var",
+    PrivacyFlag.NOT_ANALYZED: "İncelenemedi, kendiniz kontrol edin",
 }
+CONTACT_CONFIRM_LABEL = "Bilerek iletişim bilgisi (telefon / e-posta) ekliyorum"
 ISSUE_LABELS = {
     IssueType.UNSUPPORTED_CLAIM: "Dayanaksız ifade",
     IssueType.MISLEADING_STATEMENT: "Yanıltıcı ifade",
@@ -144,7 +146,7 @@ def llm_client(model: str) -> AnthropicLLMClient:
 def workflow() -> Iterator[ListingWorkflow]:
     settings = load_settings()
     # One connection per script run (Streamlit reruns the script on every interaction),
-    # always closed, also when st.rerun() interrupts the run.
+    # always closed, even when st.rerun() interrupts the run.
     conn = open_database(settings.db_path)
     try:
         yield ListingWorkflow(conn, settings, llm_client(settings.model))
@@ -263,7 +265,7 @@ def sidebar(wf: ListingWorkflow) -> str | None:
     if listings:
         ids = [listing.id for listing in listings]
         labels = {
-            listing.id: f"{listing_name(wf, listing.id)} — {STATUS_LABELS_TR[listing.status]}"
+            listing.id: f"{listing_name(wf, listing.id)} · {STATUS_LABELS_TR[listing.status]}"
             for listing in listings
         }
         current = st.session_state.get("listing_id")
@@ -315,7 +317,8 @@ def create_form(wf: ListingWorkflow) -> None:
             "Serbest notlar (isteğe bağlı)",
             max_chars=2000,
             placeholder=(
-                "Eklemek istedikleriniz. Buradan çıkarılan her bilgi size onay için sorulur."
+                "Eklemek istediğiniz başka bir şey varsa yazın."
+                " Buradan alınan her bilgi onayınıza sunulur."
             ),
         )
         confirm = st.checkbox("İletişim bilgisi (telefon / e-posta) eklediğimi biliyorum")
@@ -327,6 +330,12 @@ def create_form(wf: ListingWorkflow) -> None:
         def create():
             result = wf.create_listing(data)
             st.session_state["listing_id"] = result.listing.id
+            if result.warnings:
+                st.session_state["flash_warning"] = (
+                    "Girdiğiniz bilgilerde kişisel veri olabilir: "
+                    + ", ".join(result.warnings)
+                    + ". İlanı yayımlamadan önce kontrol edin."
+                )
             return result
 
         attempt(create, "İlan oluşturuldu. Şimdi fotoğrafları ekleyin.")
@@ -336,7 +345,7 @@ def photos_step(wf: ListingWorkflow, listing_id: str) -> None:
     st.subheader("Fotoğrafları ekleyin")
     st.caption(
         "JPEG, PNG veya WEBP yükleyin. Konum (GPS) gibi gizli bilgiler otomatik silinir."
-        " En iyi sonuç için önden, yandan, arkadan, iç mekândan ve gösterge panelinden çekin."
+        " En iyi sonuç için önden, yandan, arkadan, içeriden ve gösterge panelinden çekin."
     )
     with st.form("upload", clear_on_submit=True):
         files = st.file_uploader(
@@ -380,12 +389,15 @@ def photo_gallery(wf: ListingWorkflow, listing_id: str) -> None:
 def facts_step(wf: ListingWorkflow, listing_id: str) -> None:
     st.subheader("Bilgileri kontrol edin")
     st.caption(
-        "Yalnızca onayladığınız bilgiler ilana girer. Fotoğraftan gelen öneriler modelin"
+        "Yalnızca onayladığınız bilgiler ilana girer. Fotoğraftan gelen öneriler yapay zekanın"
         " tahminidir: doğru değilse reddedin veya düzeltin."
     )
     overview = wf.facts_overview(listing_id)
     if overview.notes_injection_patterns:
-        st.warning("Notlarınızda talimat gibi görünen bir ifade var. Sadece veri olarak işlendi.")
+        st.warning(
+            "Notlarınızda talimat gibi görünen bir ifade var. Talimat olarak değil,"
+            " yalnızca bilgi olarak dikkate alındı."
+        )
     if overview.near_duplicates:
         st.info(f"{len(overview.near_duplicates)} fotoğraf çifti neredeyse aynı görünüyor.")
     for conflict in overview.conflicts:
@@ -410,8 +422,12 @@ def facts_step(wf: ListingWorkflow, listing_id: str) -> None:
         keys = [d.key for d in wf.schema.field_definitions]
         key = st.selectbox("Alan", keys, format_func=lambda k: wf.schema.get(k).label_tr)
         value = value_input(wf.schema.get(key), key=f"manual-{key}", label="Değer")
+        confirm = st.checkbox(CONTACT_CONFIRM_LABEL, key="manual-confirm")
         if st.button("Kaydet", key="manual-save"):
-            attempt(lambda: wf.set_seller_fact(listing_id, key, value), "Kaydedildi.")
+            attempt(
+                lambda: wf.set_seller_fact(listing_id, key, value, confirm_contact_info=confirm),
+                "Kaydedildi.",
+            )
 
     with st.expander("Fotoğraflar"):
         photo_gallery(wf, listing_id)
@@ -423,7 +439,7 @@ def fact_row(wf: ListingWorkflow, listing_id: str, definition: FieldDefinition, 
     text, photo, actions = st.columns([4, 2, 3], vertical_alignment="center")
     value = md(definition.display_value(fact.value))
     if fact.source is FactSource.VISION:
-        source = f"Fotoğraftan · %{fact.confidence * 100:.0f} güven"
+        source = f"Fotoğraftan tahmin · güven %{fact.confidence * 100:.0f}"
     else:
         source = "Sizin girdiğiniz"
     badge = {
@@ -448,8 +464,13 @@ def fact_row(wf: ListingWorkflow, listing_id: str, definition: FieldDefinition, 
         if fact.status is not FactStatus.REJECTED:
             with buttons.popover("Düzelt"):
                 corrected = value_input(definition, key=f"fix-{fact.id}", label="Doğru değer")
+                confirm = st.checkbox(CONTACT_CONFIRM_LABEL, key=f"fix-confirm-{fact.id}")
                 if st.button("Kaydet", key=f"correct-{fact.id}"):
-                    attempt(lambda: wf.correct_fact(listing_id, fact.id, corrected))
+                    attempt(
+                        lambda: wf.correct_fact(
+                            listing_id, fact.id, corrected, confirm_contact_info=confirm
+                        )
+                    )
 
 
 def questions_step(wf: ListingWorkflow, listing_id: str) -> None:
@@ -477,11 +498,11 @@ def questions_step(wf: ListingWorkflow, listing_id: str) -> None:
 
 
 def generate_step(wf: ListingWorkflow, listing_id: str) -> None:
-    st.subheader("İlan metnini yazdırın")
+    st.subheader("İlan metnini oluşturun")
     count = len(wf.approved_facts(listing_id))
     st.caption(
-        f"Yazar yalnızca onayladığınız {count} bilgiyi görür. Ardından ayrı bir denetçi"
-        " her cümlenin bir bilgiye dayandığını kontrol eder."
+        f"Metni yazan yapay zeka yalnızca onayladığınız {count} bilgiyi görür."
+        " Ardından ayrı bir denetçi her cümlenin bir bilgiye dayandığını kontrol eder."
     )
     if st.button("İlan metnini yaz", type="primary"):
         with st.spinner("İlan yazılıyor ve kontrol ediliyor…"):
@@ -534,7 +555,7 @@ def draft_view(wf: ListingWorkflow, listing_id: str):
         if issue.claim_index is not None:
             by_claim[issue.claim_index].append(issue)
     listing_preview(wf, listing_id, draft, by_claim)
-    st.caption(f"Taslak sürüm {draft.version}")
+    st.caption(f"Taslak sürümü: {draft.version}")
 
     claims = draft.all_claims
     if issues:
@@ -577,10 +598,12 @@ def market_panel(wf: ListingWorkflow, listing_id: str) -> None:
         if summary is None:
             return
         if summary.status is MarketStatus.OK:
+            median = group_thousands(summary.median_price_try)
+            q1 = group_thousands(summary.q1_price_try)
+            q3 = group_thousands(summary.q3_price_try)
             st.write(
-                f"Ortanca {group_thousands(summary.median_price_try)} TL · ilanların orta yarısı "
-                f"{group_thousands(summary.q1_price_try)}–{group_thousands(summary.q3_price_try)}"
-                f" TL ({summary.sample_size} sentetik ilan)"
+                f"Orta fiyat (medyan) {median} TL · ilanların yarısı {q1} ile {q3} TL arasında"
+                f" ({summary.sample_size} sentetik ilan)"
             )
         elif summary.status is MarketStatus.MISSING_FACTS:
             st.write("Hesaplamak için marka, model ve model yılı gerekli.")
@@ -593,7 +616,7 @@ def market_panel(wf: ListingWorkflow, listing_id: str) -> None:
 def approval_step(wf: ListingWorkflow, listing_id: str) -> None:
     st.subheader("Son kontrol ve onay")
     st.caption(
-        "İlanınız dışa aktarılacağı hâliyle aşağıda. Onayınız yalnızca bu sürüm için geçerlidir."
+        "İlanınızın dışa aktarılacak son hali aşağıda. Onayınız yalnızca bu sürüm için geçerlidir."
     )
     draft, verdicts = draft_view(wf, listing_id)
     if draft is None:
@@ -604,7 +627,7 @@ def approval_step(wf: ListingWorkflow, listing_id: str) -> None:
     warn = combined_decision(verdicts) is SafetyDecision.WARN
     flagged = any(p.privacy_flags for p in wf.facts_overview(listing_id).photos)
     ack_warnings = (
-        st.checkbox("Uyarıları okudum ve bu hâliyle yayımlamak istiyorum") if warn else False
+        st.checkbox("Uyarıları okudum ve bu haliyle yayımlamak istiyorum") if warn else False
     )
     ack_privacy = (
         st.checkbox(
@@ -634,11 +657,11 @@ def approval_step(wf: ListingWorkflow, listing_id: str) -> None:
 def change_request_form(wf: ListingWorkflow, listing_id: str, key: str) -> None:
     with st.form(key, border=False):
         comment = st.text_area(
-            "Yazara ne değiştirmesini istersiniz?",
+            "Metinde neyin değişmesini istersiniz?",
             max_chars=1000,
             placeholder="örn. Hasarla ilgili cümleyi çıkar, başlığa yakıt tipini ekle.",
         )
-        if st.form_submit_button("Yeniden yazdır"):
+        if st.form_submit_button("Yeniden yaz"):
             with st.spinner("İlan yeniden yazılıyor…"):
                 attempt(lambda: wf.request_changes(listing_id, comment))
 
@@ -646,7 +669,7 @@ def change_request_form(wf: ListingWorkflow, listing_id: str, key: str) -> None:
 def blocked_step(wf: ListingWorkflow, listing_id: str) -> None:
     st.subheader("Taslakta düzeltilmesi gereken bir sorun var")
     st.warning(
-        "Güvenlik kontrolü, iki düzeltme denemesinden sonra da bir kuralın çiğnendiğini gördü"
+        "Güvenlik kontrolü metinde veya bilgilerinizde kurala aykırı bir ifade buldu"
         " ve taslağı durdurdu. Baştan başlamanız gerekmiyor: aşağıdaki iki yoldan biriyle"
         " devam edebilirsiniz."
     )
@@ -661,7 +684,7 @@ def blocked_step(wf: ListingWorkflow, listing_id: str) -> None:
         if st.button("Bilgilere dön", key="reopen-blocked", type="primary"):
             attempt(lambda: wf.reopen_facts(listing_id))
     with instruct, st.container(border=True):
-        st.markdown("**2. Yazara talimat verin**")
+        st.markdown("**2. Değişiklik isteyin**")
         st.caption("Neyin değişmesi gerektiğini yazın; ilan bu talimatla yeniden yazılır.")
         change_request_form(wf, listing_id, "blocked-changes")
 
@@ -680,7 +703,7 @@ def export_step(wf: ListingWorkflow, listing_id: str) -> None:
             except (WorkflowError, ValueError) as exc:
                 st.error(md(str(exc)))
     elif key not in st.session_state:
-        st.session_state[key] = wf.export_listing(listing_id)
+        attempt(lambda: st.session_state.__setitem__(key, wf.export_listing(listing_id)))
     package = st.session_state.get(key)
     if not package:
         return
@@ -734,11 +757,13 @@ def render(wf: ListingWorkflow) -> None:
     listing_id = sidebar(wf)
     if flash := st.session_state.pop("flash", None):
         st.success(flash)
+    if warning := st.session_state.pop("flash_warning", None):
+        st.warning(md(warning))
     if listing_id is None:
         create_form(wf)
         return
     listing = wf.get_listing(listing_id)
-    st.title(listing_name(wf, listing_id))
+    st.title(md(listing_name(wf, listing_id)))
     st.caption(f"İlan no {listing.id[:8]} · {STATUS_LABELS_TR[listing.status]}")
     stepper(listing.status)
     if listing.status is S.ANALYZING:

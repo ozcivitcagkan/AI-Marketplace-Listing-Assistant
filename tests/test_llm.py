@@ -117,6 +117,7 @@ def test_untrusted_text_cannot_close_its_tag():
         "note_extractor_v1",
         "gap_questions_v1",
         "copywriter_v1",
+        "copywriter_v3",
         "safety_reviewer_v1",
     ],
 )
@@ -124,3 +125,10 @@ def test_prompts_are_packaged_and_versioned(version):
     prompt = load_prompt(version)
     assert prompt.version == version
     assert len(prompt.text) > 100
+
+
+def test_copywriter_v3_explains_the_previous_draft_and_speaks_as_the_owner():
+    text = load_prompt("copywriter_v3").text
+    assert "previous_draft" in text and "claim_index" in text
+    assert "aracımın rengi siyah" in text
+    assert "aracın rengi" not in text

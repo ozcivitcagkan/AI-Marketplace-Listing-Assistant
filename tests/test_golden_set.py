@@ -3,8 +3,8 @@
 What this measures offline: the pipeline's guarantees, not model quality. Using a
 deterministic writer, every one of the 20 listings must end with
 - 0 claims citing anything but approved facts, and 0 numbers absent from cited facts,
-- 100 % of planted national IDs / IBANs refused at intake,
-- 100 % of planted injection notes flagged.
+- 100% of planted national IDs / IBANs refused at intake,
+- 100% of planted injection notes flagged.
 Model-quality metrics (vision accuracy on real photos) need live runs and real, licensed
 photos, which this repository deliberately does not contain.
 """

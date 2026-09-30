@@ -82,6 +82,16 @@ def test_exact_match_needs_no_widening(conn, settings, schema, listing):
     assert summary.is_synthetic
 
 
+@pytest.mark.parametrize("typed", ["Istanbul", "istanbul", "ISTANBUL", "İSTANBUL"])
+def test_city_filter_folds_dotted_and_dotless_i(conn, settings, schema, listing, typed):
+    rows = [comparable(2019, city="İstanbul", price=p) for p in range(1, 6)]
+    ComparableRepository(conn).add_many(rows)
+    approve(conn, listing, make="Renault", model="Clio", model_year="2019", city=typed)
+    summary, _ = analyse(conn, settings, schema, listing)
+    assert summary.status is MarketStatus.OK
+    assert summary.widening_notes == []
+
+
 def test_filter_widens_step_by_step_and_says_so(conn, settings, schema, listing):
     rows = [comparable(2016, city="Ankara", price=p) for p in range(100, 105)]
     ComparableRepository(conn).add_many(rows)

@@ -164,13 +164,18 @@ class AgentRun:
     def generate(self, request: LLMRequest):
         """Call the model through the per-listing budget and record usage."""
         self._budget.consume()
-        result = self._llm.generate(request)
-        with self._lock:
-            self.llm_calls += 1
-            self.input_tokens += result.input_tokens
-            self.output_tokens += result.output_tokens
-            self.model = result.model
-            self.prompt_version = request.prompt_version
+        result = None
+        try:
+            result = self._llm.generate(request)
+        finally:
+            # A failed call still counts: the persisted cap sums llm_calls per listing.
+            with self._lock:
+                self.llm_calls += 1
+                self.prompt_version = request.prompt_version
+                if result is not None:
+                    self.input_tokens += result.input_tokens
+                    self.output_tokens += result.output_tokens
+                    self.model = result.model
         return result.output
 
     def mark_failed(self, reason: str) -> None:

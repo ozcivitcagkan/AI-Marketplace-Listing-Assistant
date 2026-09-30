@@ -8,6 +8,10 @@ import re
 
 from listing_assistant.text_utils import tr_lower
 
+# An optional word between the topic and the negation, never "var" ("hasar var yok").
+_GAP = r"(?:\s+(?!var\b)\w+)?"
+_ABSENT = r"\s+(yok|bulunm|olma)"
+
 # Absolute / absence claims. Allowed only when a seller-sourced fact states them, and
 # even then flagged with a warning (architecture doc §7.1 "Mutlak iddia kuralı").
 ABSOLUTE_CLAIM_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -21,9 +25,13 @@ ABSOLUTE_CLAIM_PATTERNS: dict[str, re.Pattern[str]] = {
         "değişensiz": r"\bdeğişensiz",
         "sorunsuz": r"\bsorunsuz",
         "kusursuz": r"\bkusursuz",
-        "hasar yok": r"\bhasar\w*\s+(yok|bulunma)",
-        "kaza yok": r"\bkaza\w*\s+(yok|bulunma|yapma)",
-        "boya yok": r"\bboya\w*\s+(yok|bulunma)",
+        # One optional word in between catches "hasar kaydı yok", "boyalı parçası yok".
+        "hasar yok": r"\bhasar\w*" + _GAP + _ABSENT,
+        "kaza yok": r"\bkaza\w*" + _GAP + r"\s+(yok|bulunm|olma|yapma)",
+        "boya yok": r"\bboya\w*" + _GAP + _ABSENT,
+        "tramer yok": r"\btramer\w*" + _GAP + _ABSENT,
+        "değişen yok": r"\bdeğiş(en|miş)\w*" + _GAP + _ABSENT,
+        "sorun yok": r"\b(sorun|problem|arıza|kusur)\w*" + _GAP + _ABSENT,
         "sıfır ayarında": r"\bsıfır\s+ayarında",
     }.items()
 }

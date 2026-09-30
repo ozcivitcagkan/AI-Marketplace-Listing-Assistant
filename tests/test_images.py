@@ -89,7 +89,7 @@ def test_empty_and_oversized_files_are_rejected():
 
 
 def test_pixel_limit_is_checked_before_decoding():
-    with pytest.raises(ImageRejectedError, match="1000 pikselden büyük"):
+    with pytest.raises(ImageRejectedError, match="1.000 pikselden büyük"):
         sanitize(encode(synthetic_scene()), max_pixels=1000)
 
 

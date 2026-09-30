@@ -53,7 +53,7 @@ STATUS_LABELS_TR: dict[ListingStatus, str] = {
     ListingStatus.DRAFT: "Fotoğraf bekliyor",
     ListingStatus.ANALYZING: "Analiz ediliyor",
     ListingStatus.FACTS_REVIEW: "Bilgi kontrolü",
-    ListingStatus.NEEDS_INFO: "Soru bekliyor",
+    ListingStatus.NEEDS_INFO: "Cevap bekliyor",
     ListingStatus.GENERATING: "Yazılmaya hazır",
     ListingStatus.SAFETY_CHECK: "Kontrol ediliyor",
     ListingStatus.BLOCKED: "Düzeltme gerekiyor",
@@ -98,7 +98,7 @@ class VisionFactProposal(StrictModel):
 
 
 class Fact(StrictModel):
-    """A single piece of information about a listing: the single source of truth."""
+    """One piece of information about a listing: the single source of truth."""
 
     id: Id = Field(default_factory=new_id)
     listing_id: Id
@@ -267,6 +267,8 @@ class PrivacyFlag(StrEnum):
     DOOR_NUMBER = "door_number"
     DOCUMENT = "document"
     SCREEN_PERSONAL_INFO = "screen_personal_info"
+    # Set by the Photo Curator: the vision call failed, so nobody checked this photo.
+    NOT_ANALYZED = "not_analyzed"
 
 
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]

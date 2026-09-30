@@ -1,4 +1,4 @@
-# Secrets — never commit real keys
+# Secrets: never commit real keys
 .env
 .env.*
 !.env.example

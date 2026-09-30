@@ -3,8 +3,15 @@ import sqlite3
 import pytest
 
 from fakes import FakeLLMClient
+from listing_assistant.agent_io import PhotoAnalysis
 from listing_assistant.db.repositories import AgentRunRepository, AuditLogRepository
-from listing_assistant.llm import LlmBudget
+from listing_assistant.llm import (
+    BudgetExceededError,
+    LlmBudget,
+    LLMOutputError,
+    LLMRequest,
+    TextPart,
+)
 from listing_assistant.models import AgentName, ListingStatus
 from listing_assistant.state_machine import TRANSITIONS, TransitionError, transition
 from listing_assistant.tools import TOOL_REGISTRY, AgentRun, PermissionDeniedError, summarize_args
@@ -89,6 +96,25 @@ def test_denied_and_unknown_calls_are_refused_and_persisted(conn, settings, sche
         ("save_draft", False),
         ("delete_listing", False),
     ]
+
+
+def test_failed_model_calls_still_count_towards_the_listing_cap(conn, settings, schema, listing):
+    """Negative test: repeated failing calls cannot slip past the persisted per-listing cap."""
+    failing = FakeLLMClient(lambda r: LLMOutputError("unusable"))
+    runs = AgentRunRepository(conn)
+    request = LLMRequest(
+        system="s", parts=(TextPart("t"),), output_model=PhotoAnalysis, prompt_version="p"
+    )
+    for _ in range(3):
+        used = runs.total_llm_calls(listing.id)
+        tools = ListingTools(conn, settings, schema, listing.id).as_mapping()
+        run = AgentRun(A.VISION_ANALYST, listing.id, tools, failing, LlmBudget(2, used))
+        with pytest.raises((LLMOutputError, BudgetExceededError)):
+            run.generate(request)
+        runs.save(run.to_record(error="failed"), run.tool_calls)
+    assert runs.total_llm_calls(listing.id) == 2
+    assert len(failing.requests) == 2
+    assert run.input_tokens == 0 and run.model is None
 
 
 def test_tool_arguments_are_summarised_without_values():

@@ -4,7 +4,7 @@ The layout follows common Turkish second-hand car listings: a title, a spec list
 description sections and an equipment list. Only two kinds of content appear:
 - the Copywriter's sentences (each already traced to approved facts), and
 - approved fact values rendered by code (spec list, equipment list).
-So a longer, richer listing still contains no sentence without a source.
+So a longer listing still contains no sentence without a source.
 """
 
 import re
@@ -81,6 +81,15 @@ def equipment_items(facts: list[Fact]) -> list[str]:
             parts = (p.strip(" .") for p in re.split(r"[,;\n]", fact.value))
             return [tr_capitalize(p) for p in parts if p]
     return []
+
+
+def code_rendered_values(facts: list[Fact], schema: CategorySchema) -> list[SpecRow]:
+    """Every fact value code prints into the export, labelled, for the safety review."""
+    rows = spec_rows(facts, schema)
+    items = equipment_items(facts)
+    if items:
+        rows.append(SpecRow(schema.get(EQUIPMENT_KEY).label_tr, ", ".join(items)))
+    return rows
 
 
 def render_listing(draft: Draft, facts: list[Fact], schema: CategorySchema) -> RenderedListing:

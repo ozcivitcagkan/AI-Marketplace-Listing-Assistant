@@ -44,9 +44,12 @@ class PiiMatch:
         return self.kind in BLOCKING_KINDS
 
 
-_NATIONAL_ID = re.compile(r"(?<!\d)[1-9]\d{10}(?!\d)")
+# Also written in groups ("100 000 001 46"). The look-arounds keep the match to a whole
+# digit run, so it never starts inside a spaced IBAN or phone number.
+_NATIONAL_ID = re.compile(r"(?<!\d)(?<!\d )[1-9](?: ?\d){10}(?! ?\d)")
 # Numeric IBANs (Turkey and most of Europe's numeric formats), optionally in groups of 4.
-_IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?\d{4}){3,7}(?: ?\d{1,4})?(?!\d)")
+# Country letters in any case, since sellers also type "tr33 ...".
+_IBAN = re.compile(r"\b[A-Za-z]{2}\d{2}(?: ?\d{4}){3,7}(?: ?\d{1,4})?(?!\d)")
 _PHONE = re.compile(
     r"(?<![\d+])(?:\+90[\s-]?|0)?\(?5\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}(?!\d)"
 )
@@ -86,7 +89,7 @@ def scan_text(text: str) -> list[PiiMatch]:
         matches.append(PiiMatch(kind, mask(match.group()), match.start(), match.end()))
 
     for m in _NATIONAL_ID.finditer(text):
-        if is_valid_national_id(m.group()):
+        if is_valid_national_id(m.group().replace(" ", "")):
             add(PiiKind.NATIONAL_ID, m)
     for m in _IBAN.finditer(text):
         if is_valid_iban(m.group()):

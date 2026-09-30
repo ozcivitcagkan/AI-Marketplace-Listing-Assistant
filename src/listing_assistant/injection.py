@@ -24,8 +24,8 @@ INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         "role_marker": r"(?m)^\s*(system|sistem|assistant|asistan|developer)\s*:",
         "role_override_en": r"\b(you are now|act as|new instructions|developer mode)\b",
         "role_override_tr": r"\b(artık sen|yeni talimat|geliştirici modu)",
-        "tag_breakout": r"</?\s*(seller_notes|approved_facts|draft_claims|reviewer_feedback"
-        r"|seller_change_request|system)\s*>",
+        "tag_breakout": r"</?\s*(seller_notes|approved_facts|draft_claims|previous_draft"
+        r"|reviewer_feedback|seller_change_request|system)\s*>",
     }.items()
 }
 

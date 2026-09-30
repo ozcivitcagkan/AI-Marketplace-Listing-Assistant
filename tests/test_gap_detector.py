@@ -6,7 +6,7 @@ from fakes import FakeLLMClient, request_text
 from listing_assistant.agent_io import GapQuestion, GapQuestions
 from listing_assistant.agents.gap_detector import find_gaps, run_gap_detector
 from listing_assistant.db.repositories import ClarificationRepository, FactRepository
-from listing_assistant.llm import LlmBudget, LLMOutputError
+from listing_assistant.llm import LlmBudget, LLMOutputError, LLMUnavailableError
 from listing_assistant.models import (
     AgentName,
     ClarificationStatus,
@@ -63,6 +63,19 @@ def test_questions_are_saved_and_unknown_keys_ignored(conn, settings, schema, li
 def test_model_failure_falls_back_to_templates(conn, settings, schema, listing):
     fake = FakeLLMClient(lambda r: LLMOutputError("refused"))
     created = run_gap_detector(make_run(conn, settings, schema, listing, fake), schema, set())
+    assert len(created) == 4
+    assert all(c.question.startswith("Lütfen") for c in created)
+
+
+def test_unreachable_model_or_spent_budget_falls_back_to_templates(conn, settings, schema, listing):
+    """Gate 1 is already recorded when questions are asked, so the flow must not stop here."""
+    down = FakeLLMClient(lambda r: LLMUnavailableError("down"))
+    created = run_gap_detector(make_run(conn, settings, schema, listing, down), schema, set())
+    assert len(created) == 4
+
+    tools = ListingTools(conn, settings, schema, listing.id).as_mapping()
+    spent = AgentRun(AgentName.GAP_DETECTOR, listing.id, tools, down, LlmBudget(1, 1))
+    created = run_gap_detector(spent, schema, set())
     assert len(created) == 4
     assert all(c.question.startswith("Lütfen") for c in created)
 

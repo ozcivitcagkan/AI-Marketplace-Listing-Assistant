@@ -2,8 +2,9 @@
 
 Two independent passes, and the final decision is always derived by code:
 1. Code checks (deterministic): cited facts, personal data, numbers not found in the
-   cited facts, absolute/absence claims, hype words, injection patterns.
-2. A model review with a different prompt and task than the Copywriter ("second eye").
+   cited facts, absolute/absence claims, hype words, injection patterns; plus personal
+   data, hype words and injection patterns in the fact values code prints in the export.
+2. A model review with a different prompt and task than the Copywriter ("second pair of eyes").
    It can only ADD issues; it cannot clear anything the code found. It is skipped when
    the code already blocks the draft, to save cost.
 
@@ -17,6 +18,7 @@ from listing_assistant.agent_io import SafetyFindings
 from listing_assistant.claims import unsupported_numbers
 from listing_assistant.field_schema import CategorySchema
 from listing_assistant.injection import find_injection_patterns
+from listing_assistant.listing_format import code_rendered_values
 from listing_assistant.llm import LLMRequest, TextPart
 from listing_assistant.models import (
     Draft,
@@ -79,7 +81,20 @@ def hype_message(term: str) -> str:
 
 
 def injection_message(pattern_name: str) -> str:
-    return f"Talimat gibi görünen metin var ({pattern_name})."
+    # The pattern name is an internal identifier: the audit log keeps it, the seller does not.
+    return "Talimat gibi görünen bir ifade var."
+
+
+def fact_pii_message(label: str, kind: PiiKind, masked: str) -> str:
+    return f"'{label}' bilgisi kişisel veri içeriyor ({PII_LABELS_TR[kind]}: {masked})."
+
+
+def fact_hype_message(label: str, term: str) -> str:
+    return f"'{label}' bilgisinde abartılı ifade var: '{term}'."
+
+
+def fact_injection_message(label: str) -> str:
+    return f"'{label}' bilgisinde talimat gibi görünen bir ifade var."
 
 
 # Reviews are append-only, so ones stored before messages became Turkish keep their English
@@ -115,8 +130,16 @@ def seller_message(message: str) -> str:
     return message
 
 
+# Words that report something present or limit a negation ("başka hasar yok").
+_PRESENCE = re.compile(
+    r"\b(var|vardı|vardır|mevcut\w*|başka|dışında|hariç|haricinde|sadece|yalnızca|ama|fakat"
+    r"|ancak)\b"
+)
+_CLAUSE_BREAK = re.compile(r"[,;\n]|\.\s|\bve\b")
+
+
 def seller_stated(term: str, fact: Fact, schema: CategorySchema) -> bool:
-    """Did the seller themself assert this absolute term in this fact?
+    """Did the seller assert this absolute term in this fact?
 
     Read as the seller's statement "label value", so "Görünür hasar" + "yok" states
     "hasar yok". A plain negative answer also supports the field's own absence terms
@@ -126,10 +149,21 @@ def seller_stated(term: str, fact: Fact, schema: CategorySchema) -> bool:
     if fact.source is not FactSource.USER:
         return False
     definition = schema.get(fact.field_key)
-    statement = tr_lower(f"{definition.label_tr} {fact.value}")
-    if ABSOLUTE_CLAIM_PATTERNS[term].search(statement):
+    if term in definition.absence_terms and comparison_key(fact.value) in NEGATIVE_ANSWERS:
         return True
-    return term in definition.absence_terms and comparison_key(fact.value) in NEGATIVE_ANSWERS
+    # A partial negation ("Sol kapıda göçük var, başka hasar yok") must not back a blanket
+    # claim, so every clause has to state absence and nothing may be reported present.
+    value = tr_lower(fact.value)
+    if _PRESENCE.search(value):
+        return False
+    clauses = [c for c in _CLAUSE_BREAK.split(value) if c.strip()]
+    statements = [f"{tr_lower(definition.label_tr)} {c.strip()}" for c in clauses]
+    if not all(
+        find_absolute_terms(s) or comparison_key(c) in NEGATIVE_ANSWERS
+        for s, c in zip(statements, clauses, strict=True)
+    ):
+        return False
+    return any(ABSOLUTE_CLAIM_PATTERNS[term].search(s) for s in statements)
 
 
 def review_by_code(
@@ -210,7 +244,39 @@ def review_by_code(
                     index,
                 )
             )
+    issues += review_rendered_facts(run, list(facts_by_id.values()), schema)
     return SafetyVerdict(draft_id=draft.id, reviewer_type=ReviewerType.CODE, issues=issues)
+
+
+def review_rendered_facts(
+    run: AgentRun, facts: list[Fact], schema: CategorySchema
+) -> list[SafetyIssue]:
+    """Check the fact values code prints in the export (spec list, equipment list).
+
+    Only the seller can change these values, so the issues are not sent back to the
+    Copywriter (fixable=False) and have no claim index.
+    """
+    issues: list[SafetyIssue] = []
+
+    def add(kind: IssueType, severity: IssueSeverity, message: str) -> None:
+        issues.append(
+            SafetyIssue(issue_type=kind, severity=severity, message=message, fixable=False)
+        )
+
+    for row in code_rendered_values(facts, schema):
+        matches: list[PiiMatch] = run.call("pii_scan_text", text=row.value)
+        for match in matches:
+            severity = IssueSeverity.BLOCK if match.blocking else IssueSeverity.WARN
+            add(
+                IssueType.SENSITIVE_INFO,
+                severity,
+                fact_pii_message(row.label, match.kind, match.masked),
+            )
+        for term in find_hype_terms(row.value):
+            add(IssueType.PROHIBITED_PHRASE, IssueSeverity.WARN, fact_hype_message(row.label, term))
+        if find_injection_patterns(row.value):
+            add(IssueType.PROMPT_INJECTION, IssueSeverity.BLOCK, fact_injection_message(row.label))
+    return issues
 
 
 def review_by_model(

@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from listing_assistant.models import QualityWarning
+from listing_assistant.text_utils import group_thousands
 
 ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
 # A tiny file can declare billions of pixels (decompression bomb); check before decoding.
@@ -75,7 +76,7 @@ def sanitize_image(
                 raise ImageRejectedError("hareketli veya çok kareli resimler desteklenmiyor")
             width, height = img.size  # read from the header; pixels are not decoded yet
             if width * height > max_pixels:
-                raise ImageRejectedError(f"resim {max_pixels} pikselden büyük")
+                raise ImageRejectedError(f"resim {group_thousands(max_pixels)} pikselden büyük")
             img.load()
             # Apply the EXIF rotation now, because the EXIF block is about to be dropped.
             rgb = ImageOps.exif_transpose(img).convert("RGB")

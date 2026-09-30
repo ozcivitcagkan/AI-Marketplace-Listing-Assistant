@@ -55,10 +55,14 @@ def run_photo_curator(run: AgentRun, vision: VisionReport) -> CurationResult:
     photos: list[PhotoWithBytes] = run.call("get_listing_photos")
     listing_photos = [p.photo for p in photos]
     views = {r.photo_id: r.view for r in vision.photos if r.analyzed}
-    flags = {r.photo_id: r.privacy_flags for r in vision.photos}
+    # A photo the model could not look at may show anything, so the seller must check it.
+    flags = {
+        r.photo_id: r.privacy_flags if r.analyzed else (PrivacyFlag.NOT_ANALYZED,)
+        for r in vision.photos
+    }
     duplicates = run.call("find_duplicates", photos=listing_photos)
     return CurationResult(
         order=tuple(order_photos(listing_photos, views)),
-        privacy_flags={p.id: flags.get(p.id, ()) for p in listing_photos},
+        privacy_flags={p.id: flags.get(p.id, (PrivacyFlag.NOT_ANALYZED,)) for p in listing_photos},
         near_duplicates=tuple(duplicates),
     )

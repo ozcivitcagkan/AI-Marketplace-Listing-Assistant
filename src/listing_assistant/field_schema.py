@@ -126,7 +126,7 @@ class FieldDefinition(StrictModel):
                 if key in _FALSE_WORDS | {false_label}:
                     return "false"
                 raise ValueError(
-                    f"{label}: {self.boolean_labels[0]} veya {self.boolean_labels[1]}."
+                    f"{label}: '{self.boolean_labels[0]}' veya '{self.boolean_labels[1]}' olmalı."
                 )
             case ValueType.CHOICE:
                 key = comparison_key(value)

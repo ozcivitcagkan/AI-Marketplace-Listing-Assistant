@@ -1,3 +1,4 @@
+import html
 import io
 import sqlite3
 import zipfile
@@ -6,6 +7,7 @@ import pytest
 
 from listing_assistant.agent_io import PhotoAnalysis
 from listing_assistant.db.repositories import ApprovalRepository, AuditLogRepository
+from listing_assistant.llm import LLMOutputError
 from listing_assistant.models import (
     Approval,
     ApprovalDecision,
@@ -167,6 +169,23 @@ def test_privacy_flags_must_be_acknowledged(conn, settings):
     workflow.approve_final(listing_id, draft.version, acknowledge_privacy_flags=True)
 
 
+def test_unanalysed_photo_needs_the_privacy_acknowledgment(conn, settings):
+    """Negative test: a photo the model never looked at is not treated as privacy-safe."""
+    calls = []
+
+    def first_fails(request):
+        calls.append(request)
+        return LLMOutputError("unusable") if len(calls) == 1 else photo_analysis(request)
+
+    workflow = ListingWorkflow(conn, settings, team(PhotoAnalysis=first_fails))
+    listing_id, draft = ready_listing(workflow, photos=2)
+    flags = [p.privacy_flags for p in workflow.facts_overview(listing_id).photos]
+    assert sorted(flags) == [[], [PrivacyFlag.NOT_ANALYZED]]
+    with pytest.raises(WorkflowError, match="incelenemedi"):
+        workflow.approve_final(listing_id, draft.version)
+    workflow.approve_final(listing_id, draft.version, acknowledge_privacy_flags=True)
+
+
 # --- requesting changes ---------------------------------------------------------------------
 
 
@@ -180,6 +199,9 @@ def test_change_request_produces_a_new_reviewed_version(conn, settings):
     assert result.draft.version == first.version + 1
     prompt = llm.requests_for(CopywriterOutput)[-1].parts[0].text
     assert prompt.count("</seller_change_request>") == 1
+    # The rewrite starts from the draft the seller looked at.
+    previous = prompt.split("<previous_draft>")[1].split("</previous_draft>")[0]
+    assert first.title in html.unescape(previous)
     [_, changes] = ApprovalRepository(conn).list_for_listing(listing_id)
     assert (changes.decision, changes.draft_id) == (ApprovalDecision.CHANGES_REQUESTED, first.id)
 

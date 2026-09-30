@@ -2,12 +2,13 @@
 
 Which fields are missing is decided by code from the category schema. The model only
 words the Turkish questions, and it only ever sees field names from our own schema file,
-never seller text. If its wording is unusable, a fixed template question is used.
+never seller text. If its wording is unusable or the model cannot be called, a fixed
+template question is used.
 """
 
 from listing_assistant.agent_io import GapQuestions
 from listing_assistant.field_schema import CategorySchema, FieldDefinition
-from listing_assistant.llm import LLMOutputError, LLMRequest, TextPart
+from listing_assistant.llm import LLMError, LLMRequest, TextPart
 from listing_assistant.models import Clarification, Fact
 from listing_assistant.prompting import load_prompt
 from listing_assistant.text_utils import tr_lower
@@ -43,8 +44,10 @@ def phrase_questions(run: AgentRun, gaps: list[FieldDefinition]) -> dict[str, st
     try:
         output: GapQuestions = run.generate(request)
         phrased = {q.field_key: q.question_tr for q in output.questions if q.field_key in wanted}
-    except LLMOutputError:
-        pass  # wording is cosmetic; the fixed template below is a safe fallback
+    except LLMError:
+        # Wording is cosmetic, and gate 1 is already recorded: an unusable answer, an
+        # unreachable API or a spent budget must not stop the flow. Templates are safe.
+        pass
     return {d.key: phrased.get(d.key) or template_question(d) for d in gaps}
 
 

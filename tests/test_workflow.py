@@ -1,6 +1,9 @@
+import html
+import json
+
 import pytest
 
-from listing_assistant.agent_io import NoteExtraction, NoteProposal
+from listing_assistant.agent_io import NoteExtraction, NoteProposal, PhotoAnalysis, PhotoView
 from listing_assistant.agents.intake_guard import ConfirmationRequiredError, InputRejectedError
 from listing_assistant.db.repositories import AgentRunRepository, AuditLogRepository
 from listing_assistant.llm import BudgetExceededError
@@ -241,8 +244,28 @@ def test_blocked_draft_is_rewritten_with_feedback(make_workflow):
     assert result.correction_rounds == 1
     assert result.draft.version == 2
     assert "hatasız" not in result.draft.description
-    second_request = llm.requests_for(CopywriterOutput)[1]
+    first_request, second_request = llm.requests_for(CopywriterOutput)
+    assert "previous_draft" not in first_request.parts[0].text
     assert "reviewer_feedback" in second_request.parts[0].text
+    # The rejected draft is shown with its claim indexes, so "Claim N" can be applied.
+    previous = second_request.parts[0].text.split("<previous_draft>")[1]
+    previous = json.loads(html.unescape(previous.split("</previous_draft>")[0]))
+    rejected = [row for row in previous if "hatasız" in row["text"]]
+    assert rejected and f"Claim {rejected[0]['claim_index']}:" in second_request.parts[0].text
+
+
+def test_generation_without_approved_facts_is_refused_in_turkish(make_workflow):
+    llm = team(PhotoAnalysis=lambda r: PhotoAnalysis(view=PhotoView.OTHER))
+    workflow = make_workflow(llm)
+    listing_id = new_listing(workflow, fields={})
+    workflow.run_analysis(listing_id)
+    assert workflow.complete_fact_review(listing_id) is S.NEEDS_INFO
+    for question in workflow.open_questions(listing_id):
+        workflow.answer_question(listing_id, question.id, None, decline=True)
+    assert workflow.get_listing(listing_id).status is S.GENERATING
+    with pytest.raises(WorkflowError, match="onaylanmış hiçbir bilgi yok"):
+        workflow.run_generation(listing_id)
+    assert llm.requests_for(CopywriterOutput) == []
 
 
 def test_persistent_violation_ends_blocked_after_two_rounds(make_workflow):

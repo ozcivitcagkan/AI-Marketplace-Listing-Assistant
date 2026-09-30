@@ -1,6 +1,6 @@
 """Red-team scenarios from architecture doc §12, run against a COMPROMISED model.
 
-The fake model below does whatever the attacker wants. These tests show the structure
+The fake model below does whatever the attacker wants. These tests show that the structure
 of the system (schemas, tool gate, claim checks, safety review, human gates) contains
 the damage anyway: the attack never reaches an exported listing.
 """
