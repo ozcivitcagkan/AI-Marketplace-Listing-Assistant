@@ -55,16 +55,7 @@ by changing the facts or requesting another draft. The listing text is written i
 first person; the spec and equipment lists are rendered by code from approved facts. The UI
 is in Turkish.
 
-| Agent | Kind | Sees | Cannot |
-| --- | --- | --- | --- |
-| Intake Guard | code | seller text | call a model |
-| Vision Analyst | LLM | one photo, observable fields | report unobservable fields, write text |
-| Photo Curator | code | vision views, quality metrics | call a model |
-| Fact Reconciler | code + LLM | seller facts, photo proposals, notes | approve anything |
-| Gap Detector | code + LLM | schema, approved facts | see seller text |
-| Market Analyst | code | approved make/model/year | call a model, write text |
-| Copywriter | LLM | approved facts only | see photos or notes, cite unapproved facts |
-| Safety Reviewer | code + LLM | draft, approved facts | clear an issue found by code |
+Agent details and the permission matrix are in [docs/architecture.md](docs/architecture.md).
 
 ## Security
 
